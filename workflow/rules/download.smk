@@ -1,28 +1,39 @@
 from datetime import datetime
 from pathlib import Path
+from csv import DictReader
 
 from snakemake.utils import validate
 
 
 configfile: "config/download.config.yaml"
+
+
 validate(config, schema="../schemas/download.schema.yaml")
+
 
 results = Path("results")
 log = Path("logs") / datetime.today().isoformat().replace(":", "")
 
-def get_download_output(wildcards):
+with open(config["path"]) as file:
+    species = [row["species"] for row in DictReader(file, delimiter="\t")]
+
+
+def get_species(wildcards):
     output = checkpoints.download.get(**wildcards).output[0]
-    return list(Path(output).glob("*.zip"))
+    return [ele.stem for ele in sorted(Path(output).glob("*.zip"))]
 
 
 checkpoint download:
-    message: "download raw data"
-    input: config["path"]
-    output: directory(results / "download")
+    message:
+        "download raw data"
+    input:
+        config["path"],
+    output:
+        directory(results / "download"),
     threads: 1
     log:
         out=log / "download.out.txt",
-        err=log / "download.err.txt"
+        err=log / "download.err.txt",
     shell:
         """
         mkdir -p {output:q}
@@ -33,21 +44,45 @@ checkpoint download:
                 --complete-only \
                 --include genome,annotation \
                 --filename {output:q}/"$species.zip"
-        done < <(tail -n +2 {input:q}) > {log.out:q} 2> {log.err:q}
+        done < <(tail -n +2 {input:q}) 1> {log.out:q} 2> {log.err:q}
         """
 
+
 rule unzip:
-    message: "unzip files"
-    input: get_download_output
-    output: directory(results / "data")
+    message:
+        "unzip files: {wildcards.species}"
+    input:
+        results / "download" / "{species}.zip",
+    output:
+        results / "data" / "{species}" / "ncbi_dataset" / "data" / "data_report.jsonl",
+    params:
+        root=lambda wildcards: results / "data" / wildcards.species,
+    threads: 1
     log:
-        out=log / "unzip.out.txt",
-        err=log / "unzip.err.txt"
+        out=log / "unzip.{species}.out.txt",
+        err=log / "unzip.{species}.err.txt",
     shell:
         """
-        mkdir -p {output:q}
-        for ele in {input:q}; do
-            d={output:q}/"$(basename "${{ele/.zip/}}")"
-            unzip -d "$d" "$ele" > {log.out:q} 2> {log.err:q}
-        done
+        mkdir -p {params.root:q} && unzip -d {params.root:q} {input:q} 1> {log.out:q} 2> {log.err:q}
+        """
+
+
+rule meta:
+    message:
+        "metadata"
+    input:
+        lambda wildcards: expand(rules.unzip.output[0], species=get_species(wildcards)),
+    output:
+        results / "data" / "meta.tsv",
+    log:
+        err=log / "meta.err.txt",
+    params:
+        script=Path("workflow") / "scripts" / "meta.jq",
+    threads: 1
+    shell:
+        """
+        jq -f {params.script:q} {input:q} | \
+            jq -r -s '(.[0] | keys_unsorted), (.[] | [.[]]) | @tsv' \
+            1> {output:q} \
+            2> {log.err:q}
         """
