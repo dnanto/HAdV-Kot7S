@@ -1,5 +1,5 @@
 {
-    "species": input_filename | split("/")[2], 
+    "species": $species, 
     "accession": .accession, 
     "sourceDatabase": .sourceDatabase, 
     "virus.taxId": .virus.taxId, 
