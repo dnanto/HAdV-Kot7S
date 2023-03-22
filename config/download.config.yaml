@@ -1,1 +1,29 @@
-path: "config/download.tsv"
+species:
+  # A:
+  #   assembly: "GCF_000846805.1"
+  #   refseq: "NC_001460.1"
+  #   taxon: 129875
+  # B:
+  #   assembly: "GCF_000880515.1"
+  #   refseq: "NC_011203.1"
+  #   taxon: 108098
+  # C:
+  #   assembly: "GCF_000845085.1"
+  #   refseq: "NC_001405.1"
+  #   taxon: 129951
+  # D:
+  #   assembly: "GCF_000845985.1"
+  #   refseq: "NC_010956.1"
+  #   taxon: 130310
+  # E:
+  #   assembly: "GCF_000859665.1"
+  #   refseq: "NC_003266.2"
+  #   taxon: 130308
+  F:
+    assembly: "GCF_000846685.1"
+    refseq: "NC_001454.1"
+    taxon: 130309
+  G:
+    assembly: "GCF_000847325.1"
+    refseq: "NC_006879.1"
+    taxon: 536079
