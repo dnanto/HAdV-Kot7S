@@ -1,7 +1,6 @@
 from pathlib import Path
 from csv import DictReader
 from datetime import datetime
-from shlex import quote
 
 from snakemake.utils import validate
 
@@ -11,7 +10,8 @@ configfile: "config/download.config.yaml"
 
 validate(config, schema="../schemas/download.schema.yaml")
 
-species = list(config["species"])
+species = config["species"]
+crossref = config["crossref"][species]
 
 results = Path("results")
 log = Path("logs") / datetime.today().isoformat().replace(":", "")
@@ -19,48 +19,38 @@ log = Path("logs") / datetime.today().isoformat().replace(":", "")
 
 rule download:
     message:
-        "download raw data"
+        "download"
     output:
-        ref=results / "download" / "{species}" / "ref.zip",
-        lib=results / "download" / "{species}" / "lib.zip",
+        ref=results / "download" / f"{species}.ref.zip",
+        lib=results / "download" / f"{species}.lib.zip",
     threads: 1
-    log:
-        out=log / "{species}.download.out.txt",
-        err=log / "{species}.download.err.txt",
     params:
-        root=results / "download",
-        json=quote(json.dumps(config["species"])),
+        assembly=crossref["assembly"],
+        taxon=crossref["taxon"],
     threads: 1
     shell:
         """
-        echo {params.json:1} | \
-        jq -r 'to_entries | map([.key, .value.assembly, .value.taxon] | @tsv)[]' | \
-        while read -r species assembly taxon; do
-            mkdir -p {params.root:q}/"$species"
-            echo "$species -> $assembly"
-            datasets download genome accession "$assembly" \
-                --include genome,gff3,gbff \
-                --filename {params.root:q}/"$species/ref.zip"
-            echo "$species -> $taxon"
-            datasets download virus genome taxon "$taxon" \
-                --complete-only \
-                --include genome \
-                --filename {params.root:q}/"$species/lib.zip"
-        done > >(tee -a {log.out:q}) 2> >(tee -a {log.err:q} >&2)
+        datasets download genome accession {params.assembly:q} \
+            --include genome,gff3,gbff \
+            --filename {output.ref:q}
+        datasets download virus genome taxon {params.taxon:q} \
+            --complete-only \
+            --include genome \
+            --filename {output.lib:q}
         """
 
 
 rule ref:
     message:
-        "library"
+        "ref"
     input:
         zip=rules.download.output.ref,
     output:
-        fna=results / "data" / "{species}" / "ref.fna",
-        gbf=results / "data" / "{species}" / "ref.gbff",
-        gff=results / "data" / "{species}" / "ref.gff",
+        fna=results / "data" / species / "ref.fna",
+        gbf=results / "data" / species / "ref.gbff",
+        gff=results / "data" / species / "ref.gff",
     log:
-        err=log / "{species}.ref.err.txt",
+        err=log / f"{species}.ref.err.txt",
     params:
         list="ncbi_dataset/data/genomic.fna",
     threads: 1
@@ -74,13 +64,13 @@ rule ref:
 
 rule lib:
     message:
-        "library"
+        "lib"
     input:
         zip=rules.download.output.lib,
     output:
-        fna=results / "data" / "{species}" / "lib.fna",
+        fna=results / "data" / species / "lib.fna",
     log:
-        err=log / "{species}.lib.err.txt",
+        err=log / f"{species}.lib.err.txt",
     threads: 1
     shell:
         """
@@ -90,17 +80,17 @@ rule lib:
 
 rule meta:
     message:
-        "metadata"
+        "meta"
     input:
         zip=rules.download.output.lib,
     output:
-        tsv=results / "data" / "{species}" / "meta.tsv",
+        tsv=results / "data" / species / "meta.tsv",
     log:
-        err=log / "{species}.meta.err.txt",
+        err=log / f"{species}.meta.err.txt",
     params:
         list="ncbi_dataset/data/data_report.jsonl",
         script=Path(workflow.basedir) / "scripts" / "meta.jq",
-        species=lambda wildcards: wildcards.species,
+        species=species,
     threads: 1
     shell:
         """
@@ -114,10 +104,10 @@ rule meta:
 
 rule all:
     input:
-        expand(rules.download.output.lib, species=species),
-        expand(rules.download.output.ref, species=species),
-        expand(rules.ref.output.fna, species=species),
-        expand(rules.ref.output.gbf, species=species),
-        expand(rules.ref.output.gff, species=species),
-        expand(rules.lib.output.fna, species=species),
-        expand(rules.meta.output.tsv, species=species),
+        rules.download.output.lib,
+        rules.download.output.ref,
+        rules.ref.output.fna,
+        rules.ref.output.gbf,
+        rules.ref.output.gff,
+        rules.lib.output.fna,
+        rules.meta.output.tsv,

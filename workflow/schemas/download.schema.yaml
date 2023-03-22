@@ -7,8 +7,12 @@ type: object
 # possible entries of the config file and which type they should be
 properties:
   species:
+    type: string
+    default: A
+  crossref:
     type: object
 
 # entries that have to be in the config file for successful validation
 required:
   - species
+  - crossref
