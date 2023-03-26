@@ -13,17 +13,18 @@ validate(config, schema=Path(workflow.basedir) / "schemas" / "download.schema.ya
 species = config["species"]
 crossref = config["crossref"][species]
 
-results = Path("results")
-root_data = results / "data" / species
-root_download = results / "download" / species
+path_results = Path("results")
+path_base = Path(workflow.basedir)
+path_data = path_results / "data" / species
+path_download = path_results / "download" / species
 
 
 rule download:
     message:
         "download"
     output:
-        ref=root_download / f"{species}.ref.zip",
-        lib=root_download / f"{species}.lib.zip",
+        ref=path_download / f"{species}.ref.zip",
+        lib=path_download / f"{species}.lib.zip",
     threads: 1
     params:
         assembly=crossref["assembly"],
@@ -47,13 +48,13 @@ rule ref:
     input:
         zip=rules.download.output.ref,
     output:
-        fna=root_data / "ref.fna",
-        gbf=root_data / "ref.gbff",
-        gff=root_data / "ref.gff",
+        fna=path_data / "ref.fna",
+        gbf=path_data / "ref.gbff",
+        gff=path_data / "ref.gff",
     log:
-        fna=root_data / "ref.fna.log",
-        gbf=root_data / "ref.gbff.log",
-        gff=root_data / "ref.gff.log",
+        fna=path_data / "ref.fna.log",
+        gbf=path_data / "ref.gbff.log",
+        gff=path_data / "ref.gff.log",
     params:
         list="ncbi_dataset/data/genomic.fna",
     threads: 1
@@ -71,9 +72,9 @@ rule lib:
     input:
         zip=rules.download.output.lib,
     output:
-        fna=root_data / "lib.fna",
+        fna=path_data / "lib.fna",
     log:
-        fna=root_data / "lib.fna.log",
+        fna=path_data / "lib.fna.log",
     threads: 1
     shell:
         """
@@ -87,12 +88,12 @@ rule meta:
     input:
         zip=rules.download.output.lib,
     output:
-        tsv=root_data / "meta.tsv",
+        tsv=path_data / "meta.tsv",
     log:
-        tsv=root_data / "meta.tsv.log",
+        tsv=path_data / "meta.tsv.log",
     params:
         list="ncbi_dataset/data/data_report.jsonl",
-        script=Path(workflow.basedir) / "scripts" / "meta.jq",
+        script=path_base / "scripts" / "meta.jq",
         species=species,
     threads: 1
     shell:
@@ -112,10 +113,10 @@ rule filter:
         fna=rules.lib.output.fna,
         tsv=rules.meta.output.tsv,
     output:
-        fna=root_data / "sbj.fna",
-        tsv=root_data / "sbj.tsv",
+        fna=path_data / "sbj.fna",
+        tsv=path_data / "sbj.tsv",
     log:
-        log=root_data / "sbj.log",
+        log=path_data / "sbj.log",
     params:
         id="accession",
         resolution="month",
@@ -138,9 +139,9 @@ rule align:
     input:
         fna=rules.filter.output.fna,
     output:
-        fna=root_data / "msa.fna",
+        fna=path_data / "msa.fna",
     log:
-        fna=root_data / "msa.fna.log",
+        fna=path_data / "msa.fna.log",
     params:
         reference=crossref["refseq"],
     threads: 8
@@ -154,11 +155,11 @@ rule recom:
     input:
         fna=rules.align.output.fna,
     output:
-        tree=root_data / "gub.final_tree.tre",
-        node=root_data / "gub.node_labelled.final_tree.tre",
-        stat=root_data / "gub.per_branch_statistics.csv",
+        tree=path_data / "gub.final_tree.tre",
+        node=path_data / "gub.node_labelled.final_tree.tre",
+        stat=path_data / "gub.per_branch_statistics.csv",
     params:
-        prefix=root_data / "gub",
+        prefix=path_data / "gub",
         bootstrap=10,
         iterations=1,
     threads: 8
@@ -169,6 +170,7 @@ rule recom:
         run_gubbins.py {input.fna:q} \
             --prefix {params.prefix:q} \
             --threads {threads} \
+            --filter-percentage 100 \
             --model-fitter raxml \
             --bootstrap {params.bootstrap:q} \
             --transfer-bootstrap \
@@ -178,6 +180,35 @@ rule recom:
             --extensive-search && \
         rm -rf "$(pwd)"/tmp*
         """
+
+
+rule chrono:
+    message:
+        "chrono"
+    input:
+        tree=rules.recom.output.tree,
+        node=rules.recom.output.node,
+        stat=rules.recom.output.stat,
+        meta=rules.filter.output.tsv,
+        fast=rules.align.output.fna,
+    output:
+        tree=path_data / "bac.tree",
+        json=path_data / "bac.json",
+        tsv=path_data / "bac.tsv",
+    log:
+        out=path_data / "bac.out.log",
+        msg=path_data / "bac.msg.log",
+    params:
+        models=config["models"],
+        seed=config["seed"],
+        reps=config["reps"],
+        nbIts=config["nbIts"],
+        thin=config["thin"],
+        burn=config["burn"],
+        ess=config["ess"],
+    threads: 8
+    script:
+        path_base / "scripts"/"bactdate.R"
 
 
 rule all:
@@ -195,3 +226,6 @@ rule all:
         rules.recom.output.tree,
         rules.recom.output.node,
         rules.recom.output.stat,
+        rules.chrono.output.tree,
+        rules.chrono.output.json,
+        rules.chrono.output.tsv,

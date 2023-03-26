@@ -11,6 +11,42 @@ properties:
     default: A
   crossref:
     type: object
+  seed:
+    type: integer
+    default: 7080
+  # BactDating
+  reps:
+    type: integer
+    description: the number of replicate runs per model
+    default: 3
+  models:
+    type: array
+    description: the models to test
+    default:
+      - poisson
+      - negbin
+      - strictgamma
+      - relaxedgamma
+      - mixedgamma
+      - arc
+      - carc
+      - mixedcarc
+  nbIts:
+    type: integer
+    description: the number of MCMC iterations to perform
+    default: 1000000
+  thin:
+    type: integer
+    description: the thining interval between recorded MCMC samples
+    default: 100
+  burn:
+    type: number
+    description: the burn-in in percentage [0, 1]
+    default: 0.50
+  ess:
+    type: number
+    description: the ESS threshold
+    default: 200
 
 # entries that have to be in the config file for successful validation
 required:
